@@ -24,6 +24,7 @@ dependencies:
 - matrix
 - vector
 - numbers
+- hspec
 
 library:
   source-dirs: src
