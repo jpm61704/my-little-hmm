@@ -31,6 +31,13 @@ observationCount = length . observations
 getStates :: Reader (HMM s o p t) (t s)
 getStates = reader states
 
+foreachState :: Traversable t
+             => (a -> Reader (HMM a o p t) b)
+             -> Reader (HMM a o p t) (t b)
+foreachState f = do
+  sts <- getStates
+  forM sts f
+
 getInitialProbability :: s -> Reader (HMM s o p t) p
 getInitialProbability s = reader initialProbability >>= \f -> return $ f s
 
@@ -51,29 +58,41 @@ forwardVariable (o:os) = do
   alpha1 <- initialForwardVariable o
   F.foldlM nextForwardVariable alpha1 os
 
+-- initialForwardVariable :: (Traversable t, Functor t, Num p)
+--                        => o
+--                        -> Reader (HMM s o p t) (t p)
+-- initialForwardVariable obs =
+--   foreachState $ \s -> do
+--     pi <- getInitialProbability s
+--     b <- getObsProbability s obs
+--     return $ b * pi
+
 initialForwardVariable :: (Traversable t, Functor t, Num p)
                        => o
                        -> Reader (HMM s o p t) (t p)
-initialForwardVariable obs = do
-  sts <- getStates
-  forM sts $ \s -> do
-    pi <- getInitialProbability s
-    b <- getObsProbability s obs
-    return $ b * pi
+initialForwardVariable obs = abstractForwardVariableCalculation obs getInitialProbability
 
 nextForwardVariable :: (Traversable t, Functor t, Foldable t, Num p)
                     => t p
                     -> o
                     -> Reader (HMM s o p t) (t p)
-nextForwardVariable prev_row obs = do
-  sts <- getStates
-  forM sts $ \s -> do
-    p_obs <- getObsProbability s obs
+nextForwardVariable prev_row obs =
+  foreachState $ \s -> do
+    b <- getObsProbability s obs
     prevRowSum <- do
-          sts <- getStates
-          trans <- forM sts (\si -> getStateTransPs si s)
+          trans <- foreachState (\si -> getStateTransPs si s)
           return $ sum $ zipWithT (*) prev_row trans
-    return $ prevRowSum * p_obs
+    return $ prevRowSum * b
+
+abstractForwardVariableCalculation :: (Traversable t, Num p)
+                                   => o
+                                   -> (s -> Reader (HMM s o p t) p)
+                                   -> Reader (HMM s o p t) (t p)
+abstractForwardVariableCalculation obs getAlpha =
+  foreachState $ \s -> do
+    b <- getObsProbability s obs
+    y <- getAlpha s
+    return $ b * y
 
 -- SOURCE OF INEFFICIENCY
 zipT :: (Traversable t, Foldable t) => t a -> t a -> t (a, a)
