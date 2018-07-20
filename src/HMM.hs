@@ -6,6 +6,7 @@ import qualified Data.Traversable as T
 import qualified Data.Vector      as V
 import Data.Ratio
 import Data.Number.CReal
+import Control.Monad.Reader 
 
 type Probability = CReal
 
@@ -27,22 +28,61 @@ stateCount = length . states
 observationCount :: (Traversable t) => HMM s o p t -> Int
 observationCount = length . observations
 
+getStates :: Reader (HMM s o p t) (t s)
+getStates = reader states
+
+getInitialProbability :: s -> Reader (HMM s o p t) p
+getInitialProbability s = reader initialProbability >>= \f -> return $ f s
+
+getObsProbability :: s -> o -> Reader (HMM s o p t) p
+getObsProbability s o = reader observationProbability >>= \f -> return $ f s o
+
+getStateTransPs :: s -> s -> Reader (HMM s o p t) p
+getStateTransPs si sj = reader stateTransitions >>= \f -> return $ f si sj
+
 prob1 :: (Traversable t, Functor t, Num p) => HMM s o p t -> [o] -> p
-prob1 hmm (o:os) = sum $ foldl (\alpha_prev o_t -> nextForwardVariable hmm alpha_prev o_t) (initialForwardVariable hmm o) os
+prob1 hmm os = sum alphas
+  where alphas = runReader (forwardVariable os) hmm
 
-initialForwardVariable :: (Functor t, Num p) => HMM s o p t -> o -> t p
-initialForwardVariable hmm obs = fmap initialAlpha (states hmm)
-  where initialAlpha s = (initialProbability hmm s) * (observationProbability hmm s obs)
+forwardVariable :: (Traversable t, Num p)
+                => [o]
+                -> Reader (HMM s o p t) (t p)
+forwardVariable (o:os) = do
+  alpha1 <- initialForwardVariable o
+  F.foldlM nextForwardVariable alpha1 os
 
-nextForwardVariable :: (Traversable t, Functor t, Foldable t, Num p) => HMM s o p t -> t p -> o -> t p
-nextForwardVariable hmm prev_row obs = fmap nextAlpha (states hmm)
-  where nextAlpha s = prevRowSum * observationProbability hmm s obs
-          where prevRowSum = sum $ fmap (\(x,y)->x*y) $ zipT prev_row $ fmap (\sj -> stateTransitions hmm sj s) (states hmm)
+initialForwardVariable :: (Traversable t, Functor t, Num p)
+                       => o
+                       -> Reader (HMM s o p t) (t p)
+initialForwardVariable obs = do
+  sts <- getStates
+  forM sts $ \s -> do
+    pi <- getInitialProbability s
+    b <- getObsProbability s obs
+    return $ b * pi
+
+nextForwardVariable :: (Traversable t, Functor t, Foldable t, Num p)
+                    => t p
+                    -> o
+                    -> Reader (HMM s o p t) (t p)
+nextForwardVariable prev_row obs = do
+  sts <- getStates
+  forM sts $ \s -> do
+    p_obs <- getObsProbability s obs
+    prevRowSum <- do
+          sts <- getStates
+          trans <- forM sts (\si -> getStateTransPs si s)
+          return $ sum $ zipWithT (*) prev_row trans
+    return $ prevRowSum * p_obs
 
 -- SOURCE OF INEFFICIENCY
 zipT :: (Traversable t, Foldable t) => t a -> t a -> t (a, a)
 zipT x y = snd $ T.mapAccumL f (F.toList y) x
   where f (y':ys) x' = (ys, (x',y'))
+
+zipWithT :: (Traversable t, Foldable t) => (a -> a -> b) -> t a -> t a -> t b
+zipWithT combine x y = snd $ T.mapAccumL f (F.toList y) x
+  where f (y':ys) x' = (ys, (combine x' y'))
 
 -- * Example
 

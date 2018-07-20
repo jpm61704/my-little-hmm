@@ -25,6 +25,7 @@ dependencies:
 - vector
 - numbers
 - hspec
+- mtl
 
 library:
   source-dirs: src
