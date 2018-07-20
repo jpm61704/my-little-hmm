@@ -6,9 +6,15 @@ import qualified Data.Traversable as T
 import qualified Data.Vector      as V
 import Data.Ratio
 import Data.Number.CReal
-import Control.Monad.Reader 
+import Control.Monad.Reader
 
 type Probability = CReal
+
+
+
+-------------------------------------------------------------------------------------
+-- * Hidden Markov Models
+-------------------------------------------------------------------------------------
 
 -- | The definition of a hidden markov model
 --   s := data type of states
@@ -27,6 +33,16 @@ stateCount = length . states
 
 observationCount :: (Traversable t) => HMM s o p t -> Int
 observationCount = length . observations
+
+data ObservationSequence t o = ObsSeq { getObservationAt :: (t -> o)
+                                      , endOfSeq :: t
+                                      }
+
+
+-------------------------------------------------------------------------------------
+-- ** Helper functions for the Reader Monad on HMM
+-------------------------------------------------------------------------------------
+
 
 getStates :: Reader (HMM s o p t) (t s)
 getStates = reader states
@@ -47,10 +63,16 @@ getObsProbability s o = reader observationProbability >>= \f -> return $ f s o
 getStateTransPs :: s -> s -> Reader (HMM s o p t) p
 getStateTransPs si sj = reader stateTransitions >>= \f -> return $ f si sj
 
+-------------------------------------------------------------------------------------
+-- * Finding the probability of a sequence of observations(Problem 1)
+-------------------------------------------------------------------------------------
+
 prob1 :: (Traversable t, Functor t, Num p) => HMM s o p t -> [o] -> p
 prob1 hmm os = sum alphas
   where alphas = runReader (forwardVariable os) hmm
 
+-- | The probability of a sequence of observations AND a state at time t given the model
+-- a_t(i) = P(O_1, O_2, ... O_t, q_t = S_i | lambda)
 forwardVariable :: (Traversable t, Num p)
                 => [o]
                 -> Reader (HMM s o p t) (t p)
@@ -58,14 +80,6 @@ forwardVariable (o:os) = do
   alpha1 <- initialForwardVariable o
   F.foldlM nextForwardVariable alpha1 os
 
--- initialForwardVariable :: (Traversable t, Functor t, Num p)
---                        => o
---                        -> Reader (HMM s o p t) (t p)
--- initialForwardVariable obs =
---   foreachState $ \s -> do
---     pi <- getInitialProbability s
---     b <- getObsProbability s obs
---     return $ b * pi
 
 initialForwardVariable :: (Traversable t, Functor t, Num p)
                        => o
@@ -76,13 +90,9 @@ nextForwardVariable :: (Traversable t, Functor t, Foldable t, Num p)
                     => t p
                     -> o
                     -> Reader (HMM s o p t) (t p)
-nextForwardVariable prev_row obs =
-  foreachState $ \s -> do
-    b <- getObsProbability s obs
-    prevRowSum <- do
-          trans <- foreachState (\si -> getStateTransPs si s)
-          return $ sum $ zipWithT (*) prev_row trans
-    return $ prevRowSum * b
+nextForwardVariable prev_row obs = abstractForwardVariableCalculation obs $ \s -> do
+  trans <- foreachState (\si -> getStateTransPs si s)
+  return $ sum $ zipWithT (*) prev_row trans -- can be generalized to a fold
 
 abstractForwardVariableCalculation :: (Traversable t, Num p)
                                    => o
@@ -99,11 +109,14 @@ zipT :: (Traversable t, Foldable t) => t a -> t a -> t (a, a)
 zipT x y = snd $ T.mapAccumL f (F.toList y) x
   where f (y':ys) x' = (ys, (x',y'))
 
+-- This improves on zipT by doing everything in one pass
 zipWithT :: (Traversable t, Foldable t) => (a -> a -> b) -> t a -> t a -> t b
 zipWithT combine x y = snd $ T.mapAccumL f (F.toList y) x
   where f (y':ys) x' = (ys, (combine x' y'))
 
+-------------------------------------------------------------------------------------
 -- * Example
+-------------------------------------------------------------------------------------
 
 data Weather = Start | Hot | Cold deriving (Eq, Show)
 data IceCreams = One | Two | Three deriving (Eq, Show)
