@@ -26,6 +26,7 @@ dependencies:
 - numbers
 - hspec
 - mtl
+- containers
 
 library:
   source-dirs: src
