@@ -2,7 +2,7 @@ module Viterbi where
 
 import HMM
 import ForwardAlgorithm
-import qualified Data.Sequence as S
+import Data.Sequence
 import Data.Foldable
 import qualified Data.Map as M
 
@@ -11,15 +11,20 @@ import qualified Data.Map as M
 
 decode :: (Traversable t, Functor t, Num p, Ord p, Foldable seq, Ord s)
        => HMM s o p t -> ObservationSeq o seq -> V s p
-decode hmm = (maximum . viterbis_T hmm)
+decode hmm obseq = maximum $ overStateSpace hmm (\st -> let inf = stateInfo hmm st in pIntoV inf v_T)
+  where v_T = viterbis_T hmm obseq
 
 -- ** Viterbi Variable
 
 -- | The viterbi variable aggregate which includes the probability
 -- and (most likely) previous state for backtracing
-data V s p = V s p
+data V s p = V (Seq s) p
            | Vi p
-           deriving (Show, Eq, Ord)
+           deriving (Show, Eq)
+
+instance (Eq s, Eq p, Ord p) => Ord (V s p) where
+  compare (V _ p1) (V _ p2) = if p1 > p2 then GT else LT
+
 
 instance Functor (V s) where
   fmap f (V s p) = V s $ f p
@@ -28,10 +33,21 @@ vNil :: (Num p) => V s p
 vNil = Vi 0
 
 probv :: V s p -> p
+probv (V _ x) = x
 probv (Vi x) = x
-probV (V _ x) = x
+
+seqV :: V s p -> Seq s
+seqV (Vi _) = empty
+seqV (V s _) = s
+
+chain :: s -> p -> V s p -> V s p
+chain st p' (V seq p) = V (seq |> st) p'
+chain st p' (Vi p) = V (pure st) p'
 
 type ViterbiMap s p = M.Map s (V s p)
+
+
+-- *** Viterbi Variable Calculations
 
 viterbis_T :: (Foldable seq, Num p, Ord p, Foldable t, Ord s)
            => HMM s o p t
@@ -63,10 +79,13 @@ argmax f xs = maximumBy (\(fx, x) (fy, y) -> if max fx fy == fx then GT else LT)
 
 pIntoV :: (Num p, Ord p) => StateInfo s o p -> M.Map s (V s p) -> (V s p)
 pIntoV st_info v_map = M.foldrWithKey f vNil v_map
-  where f s_i v_i max@(V s_max v_max) = let a = p_inbound st_info s_i
-                                            v' = a * (probv v_i)
-                                            max' = V s_i v'
-                                        in if v_max > v' then max else max'
+  where f s_i v_i max = let a = p_inbound st_info s_i
+                            v' = a * (probv v_i)
+                            seqv = seqV v_i
+                            max' = chain s_i v' v_i
+                            v_max = probv max
+                        in if v_max > v' then max else max'
+
 
 
 

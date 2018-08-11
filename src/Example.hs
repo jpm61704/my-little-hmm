@@ -2,6 +2,7 @@ module Example where
 
 import HMM
 import ForwardAlgorithm
+import Viterbi
 
 data Weather = Start | Hot | Cold deriving (Eq, Show, Ord)
 data IceCreams = One | Two | Three deriving (Eq, Show, Ord)
@@ -32,14 +33,18 @@ trans_prob Cold w = case w of
 exampleHMM :: HMM Weather IceCreams Probability []
 exampleHMM = HMM [Hot, Cold] [One, Two, Three] (trans_prob Start) (trans_prob) (obs_prob)
 
-trial1 :: [IceCreams]
-trial1 = [Three, Three, One, One, Two, Three, Three, One, Two]
-
+-- [3,3,1,1,2,2,3,1,3]
 trial2 :: [IceCreams]
 trial2 = [Three, Three, One, One, Two, Two, Three, One, Three]
 
+-- [3,3,1,1,2,3,3,1,2]
+trial1 :: [IceCreams]
+trial1 = [Three, Three, One, One, Two, Three, Three, One, Two]
+
 t_1 :: ObservationSeq IceCreams []
-t_1 = fromList trial1
+t_1 = fromList $ trial1
 
 t_2 :: ObservationSeq IceCreams []
 t_2 = fromList trial2
+
+

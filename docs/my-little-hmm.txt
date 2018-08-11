@@ -84,29 +84,6 @@ alpha_t :: (Num p) => AlphaMap s p -> StateInfo s o p -> o -> Alpha p
 --   given the forward variable from the previous observation
 pInto :: (Num p) => StateInfo s o p -> AlphaMap s p -> p
 
-module Example
-data Weather
-Start :: Weather
-Hot :: Weather
-Cold :: Weather
-data IceCreams
-One :: IceCreams
-Two :: IceCreams
-Three :: IceCreams
-obs_prob :: Weather -> IceCreams -> Probability
-trans_prob :: Weather -> Weather -> Probability
-exampleHMM :: HMM Weather IceCreams Probability []
-trial1 :: [IceCreams]
-trial2 :: [IceCreams]
-t_1 :: ObservationSeq IceCreams []
-t_2 :: ObservationSeq IceCreams []
-instance GHC.Classes.Ord Example.IceCreams
-instance GHC.Show.Show Example.IceCreams
-instance GHC.Classes.Eq Example.IceCreams
-instance GHC.Classes.Ord Example.Weather
-instance GHC.Show.Show Example.Weather
-instance GHC.Classes.Eq Example.Weather
-
 module Lib
 someFunc :: IO ()
 
@@ -116,11 +93,12 @@ decode :: (Traversable t, Functor t, Num p, Ord p, Foldable seq, Ord s) => HMM s
 -- | The viterbi variable aggregate which includes the probability and
 --   (most likely) previous state for backtracing
 data V s p
-V :: s -> p -> V s p
+V :: (Seq s) -> p -> V s p
 Vi :: p -> V s p
 vNil :: (Num p) => V s p
 probv :: V s p -> p
-probV :: () => V s p -> p
+seqV :: V s p -> Seq s
+chain :: s -> p -> V s p -> V s p
 type ViterbiMap s p = Map s (V s p)
 viterbis_T :: (Foldable seq, Num p, Ord p, Foldable t, Ord s) => HMM s o p t -> ObservationSeq o seq -> ViterbiMap s p
 
@@ -133,7 +111,30 @@ viterbi_t :: (Num p, Ord p) => ViterbiMap s p -> StateInfo s o p -> o -> V s p
 --   applied to a foldable functor
 argmax :: (Ord a, Foldable t, Functor t) => (b -> a) -> t b -> (a, b)
 pIntoV :: (Num p, Ord p) => StateInfo s o p -> Map s (V s p) -> (V s p)
-instance (GHC.Classes.Ord s, GHC.Classes.Ord p) => GHC.Classes.Ord (Viterbi.V s p)
 instance (GHC.Classes.Eq s, GHC.Classes.Eq p) => GHC.Classes.Eq (Viterbi.V s p)
 instance (GHC.Show.Show s, GHC.Show.Show p) => GHC.Show.Show (Viterbi.V s p)
+instance (GHC.Classes.Eq s, GHC.Classes.Eq p, GHC.Classes.Ord p) => GHC.Classes.Ord (Viterbi.V s p)
 instance GHC.Base.Functor (Viterbi.V s)
+
+module Example
+data Weather
+Start :: Weather
+Hot :: Weather
+Cold :: Weather
+data IceCreams
+One :: IceCreams
+Two :: IceCreams
+Three :: IceCreams
+obs_prob :: Weather -> IceCreams -> Probability
+trans_prob :: Weather -> Weather -> Probability
+exampleHMM :: HMM Weather IceCreams Probability []
+trial2 :: [IceCreams]
+trial1 :: [IceCreams]
+t_1 :: ObservationSeq IceCreams []
+t_2 :: ObservationSeq IceCreams []
+instance GHC.Classes.Ord Example.IceCreams
+instance GHC.Show.Show Example.IceCreams
+instance GHC.Classes.Eq Example.IceCreams
+instance GHC.Classes.Ord Example.Weather
+instance GHC.Show.Show Example.Weather
+instance GHC.Classes.Eq Example.Weather
