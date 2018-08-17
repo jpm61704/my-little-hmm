@@ -27,6 +27,9 @@ dependencies:
 - hspec
 - mtl
 - containers
+- boxes
+- time
+- parsec
 
 library:
   source-dirs: src

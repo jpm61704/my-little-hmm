@@ -11,8 +11,8 @@ import           Data.Number.CReal
 import           Data.Ratio
 import qualified Data.Traversable     as T
 import qualified Data.Vector          as V
+import qualified Data.Sequence as S
 
-type Probability = CReal
 
 
 -------------------------------------------------------------------------------------
@@ -31,11 +31,6 @@ data HMM s o p t = HMM { states                 :: t s
                        , observationProbability :: s -> o -> p
                        }
 
-stateCount :: (Traversable t) => HMM s o p t -> Int
-stateCount = length . states
-
-observationCount :: (Traversable t) => HMM s o p t -> Int
-observationCount = length . observations
 
 data StateInfo s o p = StateInfo { pi_s :: p
                                  , p_inbound :: s -> p
@@ -55,12 +50,70 @@ overStateSpace :: (Foldable t, Ord s)
                 => HMM s o p t -> (s -> a) -> M.Map s a
 overStateSpace hmm f = foldr (\s mm -> M.insert s (f s) mm) (M.empty) $ states hmm
 
-data ObservationSeq o seq = ObsSeq { first :: o
-                                   , rest  :: seq o
-                                   }
+overObsSpace :: (Foldable t, Ord o)
+                => HMM s o p t -> (o -> a) -> M.Map o a
+overObsSpace hmm f = foldr (\s mm -> M.insert s (f s) mm) (M.empty) $ observations hmm
 
-fromList :: [o] -> ObservationSeq o []
-fromList (o:os) = ObsSeq o os
+
+foreachState :: (Foldable t)
+             => HMM s o p t -> (s -> a -> a) -> a -> a
+foreachState hmm f x = foldr f x $ states hmm
+
+data BlankState = BState Integer deriving (Eq, Ord)
+
+instance Show BlankState where
+  show (BState n) = "S" ++ subscript n
+
+subscript :: Integer -> String
+subscript n = map subs $ show n
+  where subs c = case c of
+                   '0' -> '₀'
+                   '1' -> '₁'
+                   '2' -> '₂'
+                   '3' -> '₃'
+                   '4' -> '₄'
+                   '5' -> '₅'
+                   '6' -> '₆'
+                   '7' -> '₇'
+                   '8' -> '₈'
+                   '9' -> '₉'
+                   x -> x
+
+newHMM :: (Fractional p) => Integer -> [o] -> HMM BlankState o p []
+newHMM num_states obs = HMM sts obs pi a b
+  where sts = map BState [1..num_states]
+        n_sts = fromInteger num_states
+        n_obs = fromInteger $ toInteger $ length obs
+        pi = (\_ -> 1 / n_sts)
+        a = (\_ _ -> 1 / n_sts)
+        b = (\_ _ -> 1 / n_obs)
+
+randHMM :: (Fractional p) => Integer -> [o] -> [p] ->  HMM BlankState o p []
+randHMM num_states obs rands = HMM sts obs pi a b
+  where sts = map BState [1..num_states]
+        n_sts = fromInteger num_states
+        n_obs = fromInteger $ toInteger $ length obs
+        pi = (\_ -> 1 / n_sts)
+        a = (\_ _ -> 1 / n_sts)
+        b = (\_ _ -> 1 / n_obs)
+
+newtype ObservationSeq o = ObsSeq (S.Seq o)
+
+first :: ObservationSeq o -> o
+first (ObsSeq oseq) = case S.viewl oseq of
+                        S.EmptyL -> error "empty seq"
+                        x S.:< rest -> x
+
+rest :: ObservationSeq o -> S.Seq o
+rest (ObsSeq oseq) = case S.viewl oseq of
+                        S.EmptyL -> error "empty seq"
+                        x S.:< rest -> rest
+
+fromList :: [o] -> ObservationSeq o
+fromList = ObsSeq . S.fromList
+
+obsAt :: ObservationSeq o -> Int -> o
+obsAt (ObsSeq s) i = S.index s i
 
 data StateSeq o seq = StateSeq (seq o)
 
@@ -70,8 +123,6 @@ pIntoG :: (Num p) => (p -> p -> p) -> StateInfo s o p -> M.Map s p -> p
 pIntoG f st_info a_map = M.foldrWithKey sumIncomingProbability 0 a_map
   where sumIncomingProbability s_i alpha_i sum = let a = p_inbound st_info s_i
                                                  in f sum (a * alpha_i)
-
-
 
 
 accumMultiply :: (Num p) => (p -> p -> p) -> StateInfo s o p -> s -> p -> p -> p

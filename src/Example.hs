@@ -3,6 +3,9 @@ module Example where
 import HMM
 import ForwardAlgorithm
 import Viterbi
+import BaumWelch
+
+type Probability = Double
 
 data Weather = Start | Hot | Cold deriving (Eq, Show, Ord)
 data IceCreams = One | Two | Three deriving (Eq, Show, Ord)
@@ -34,17 +37,16 @@ exampleHMM :: HMM Weather IceCreams Probability []
 exampleHMM = HMM [Hot, Cold] [One, Two, Three] (trans_prob Start) (trans_prob) (obs_prob)
 
 -- [3,3,1,1,2,2,3,1,3]
-trial2 :: [IceCreams]
-trial2 = [Three, Three, One, One, Two, Two, Three, One, Three]
+trial2 :: ObservationSeq IceCreams
+trial2 = fromList [Three, Three, One, One, Two, Two, Three, One, Three]
 
 -- [3,3,1,1,2,3,3,1,2]
-trial1 :: [IceCreams]
-trial1 = [Three, Three, One, One, Two, Three, Three, One, Two]
-
-t_1 :: ObservationSeq IceCreams []
-t_1 = fromList $ trial1
-
-t_2 :: ObservationSeq IceCreams []
-t_2 = fromList trial2
+trial1 :: ObservationSeq IceCreams
+trial1 = fromList [Three, Three, One, One, Two, Three, Three, One, Two]
 
 
+triald :: ObservationSeq IceCreams
+triald = fromList $ replicate 100 Three
+
+
+test1 = monitoredTraining trial1 1000 100 exampleHMM

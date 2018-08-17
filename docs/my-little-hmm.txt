@@ -7,8 +7,9 @@
 @package my-little-hmm
 @version 0.1.0.0
 
+module Examples.Corn
+
 module HMM
-type Probability = CReal
 
 -- | The definition of a hidden markov model s := data type of states o :=
 --   data type of observations p := data type of probabilities t := a
@@ -20,8 +21,6 @@ HMM :: t s -> t o -> s -> p -> s -> s -> p -> s -> o -> p -> HMM s o p t
 [initialProbability] :: HMM s o p t -> s -> p
 [stateTransitions] :: HMM s o p t -> s -> s -> p
 [observationProbability] :: HMM s o p t -> s -> o -> p
-stateCount :: (Traversable t) => HMM s o p t -> Int
-observationCount :: (Traversable t) => HMM s o p t -> Int
 data StateInfo s o p
 StateInfo :: p -> s -> p -> s -> p -> o -> p -> StateInfo s o p
 [pi_s] :: StateInfo s o p -> p
@@ -30,11 +29,18 @@ StateInfo :: p -> s -> p -> s -> p -> o -> p -> StateInfo s o p
 [p_obs] :: StateInfo s o p -> o -> p
 stateInfo :: HMM s o p t -> s -> StateInfo s o p
 overStateSpace :: (Foldable t, Ord s) => HMM s o p t -> (s -> a) -> Map s a
-data ObservationSeq o seq
-ObsSeq :: o -> seq o -> ObservationSeq o seq
-[first] :: ObservationSeq o seq -> o
-[rest] :: ObservationSeq o seq -> seq o
-fromList :: [o] -> ObservationSeq o []
+overObsSpace :: (Foldable t, Ord o) => HMM s o p t -> (o -> a) -> Map o a
+foreachState :: (Foldable t) => HMM s o p t -> (s -> a -> a) -> a -> a
+data BlankState
+BState :: Integer -> BlankState
+subscript :: Integer -> String
+newHMM :: (Fractional p) => Integer -> [o] -> HMM BlankState o p []
+newtype ObservationSeq o
+ObsSeq :: (Seq o) -> ObservationSeq o
+first :: ObservationSeq o -> o
+rest :: ObservationSeq o -> Seq o
+fromList :: [o] -> ObservationSeq o
+obsAt :: ObservationSeq o -> Int -> o
 data StateSeq o seq
 StateSeq :: (seq o) -> StateSeq o seq
 
@@ -42,19 +48,22 @@ StateSeq :: (seq o) -> StateSeq o seq
 --   from s_i to s_j
 pIntoG :: (Num p) => (p -> p -> p) -> StateInfo s o p -> Map s p -> p
 accumMultiply :: (Num p) => (p -> p -> p) -> StateInfo s o p -> s -> p -> p -> p
+instance GHC.Classes.Ord HMM.BlankState
+instance GHC.Classes.Eq HMM.BlankState
+instance GHC.Show.Show HMM.BlankState
 
 module ForwardAlgorithm
 
 -- | the probability of an observation sequence occurring given a model
 --   
 --   this is problem 1, or the likelihood problem, in most HMM texts
-likelihood :: (Traversable t, Functor t, Num p, Foldable seq, Ord s) => HMM s o p t -> ObservationSeq o seq -> p
+likelihood :: (Traversable t, Functor t, Num p, Ord s) => HMM s o p t -> ObservationSeq o -> p
 type Alpha p = p
 type AlphaMap s p = Map s p
 
 -- | The alpha calculation made for an entire observation sequence This is
 --   summed over to achieve the probability of a sequence occurring
-alphas_T :: (Traversable t, Functor t, Num p, Foldable seq, Ord s) => HMM s o p t -> ObservationSeq o seq -> AlphaMap s p
+alphas_T :: (Traversable t, Functor t, Num p, Ord s) => HMM s o p t -> ObservationSeq o -> AlphaMap s p
 
 -- | the alphas for observation o_t with respect to the alphas from the
 --   previous observation.
@@ -84,23 +93,131 @@ alpha_t :: (Num p) => AlphaMap s p -> StateInfo s o p -> o -> Alpha p
 --   given the forward variable from the previous observation
 pInto :: (Num p) => StateInfo s o p -> AlphaMap s p -> p
 
+module BackwardAlgorithm
+
+-- | Label Type for the Backward Variable(Beta)
+type Beta p = p
+type BetaMap s p = Map s p
+
+-- | The initialization step for the backward algorithm
+beta_T :: (Num p) => st -> Beta p
+betas_T :: (Num p, Foldable t, Ord s) => HMM s o p t -> BetaMap s p
+beta_t :: (Foldable t, Num p, Ord s) => HMM s o p t -> BetaMap s p -> o -> s -> Beta p
+
+-- | calculation of one time unit's beta variables
+betas_t :: (Foldable t, Num p, Ord s) => HMM s o p t -> o -> BetaMap s p -> BetaMap s p
+
+-- | calculates the beta values for the first observation in a sequence
+--   
+--   Very sure this is not a very efficient implementation
+betas :: (Foldable t, Num p, Ord s) => HMM s o p t -> ObservationSeq o -> BetaMap s p
+
 module Lib
 someFunc :: IO ()
 
+module Pretty
+showHMM :: (Foldable t, Ord s, Ord o, Show p, Show s, Show o) => HMM s o p t -> String
+showPIs :: (Foldable t, Ord s, Show p, Show s) => HMM s o p t -> Box
+showAlphas :: (Foldable t, Ord s, Show p, Show s) => HMM s o p t -> Box
+showBetas :: (Foldable t, Ord s, Ord o, Show p, Show s, Show o) => HMM s o p t -> Box
+collapseDoubleMap :: (Ord k1, Ord k2) => Map k1 (Map k2 v) -> Map (k1, k2) v
+showEmission :: (Show k, Show e) => (k, e) -> String
+showTransition :: (Show k1, Show k2) => (k1, k2) -> String
+prettyMap' :: (Show v) => (k -> String) -> Map k v -> Box
+prettyMap :: (Show v, Show k) => Map k v -> Box
+prettyPercent :: (PrintfArg a) => a -> String
+
+module BaumWelch
+monitoredTraining :: (Traversable t, Fractional p, Show s, Show o, Show p, Ord s, Ord o) => ObservationSeq o -> Int -> Int -> HMM s o p t -> IO (HMM s o p t)
+type EstimationStep s o p t m = ReaderT (TimeMap (TimeData s o p), HMM s o p t, p) m
+getsTM :: (Monad m) => (TimeMap (TimeData s o p) -> a) -> EstimationStep s o p t m a
+getsTD :: (Monad m) => Int -> (TimeData s o p -> a) -> EstimationStep s o p t m a
+getAlpha :: (Monad m, Num p, Ord s) => Int -> s -> EstimationStep s o p t m (Alpha p)
+getBeta :: (Monad m, Num p, Ord s) => Int -> s -> EstimationStep s o p t m (Beta p)
+getObs :: (Monad m) => Int -> EstimationStep s o p t m o
+getsHMM :: (Monad m) => (HMM s o p t -> a) -> EstimationStep s o p t m a
+getA_ij :: (Monad m) => s -> s -> EstimationStep s o p t m p
+getB_j :: (Monad m) => s -> EstimationStep s o p t m (o -> p)
+getLikelihood :: (Monad m) => EstimationStep s o p t m p
+calcXi :: (Monad m, Fractional p, Ord s) => Int -> s -> s -> EstimationStep s o p t m p
+
+-- | Note: Source of inefficiency because this recalculations all Xi a
+--   bunch of times
+calcGamma' :: (Traversable t, Monad m, Num p, Fractional p, Foldable t, Ord s) => Int -> s -> EstimationStep s o p t m p
+calcGamma :: (Traversable t, Monad m, Num p, Fractional p, Foldable t, Ord s) => Int -> s -> EstimationStep s o p t m p
+estData_t :: (Traversable t, Monad m, Ord s, Num p, Fractional p) => Int -> EstimationStep s o p t m (EstimationData s o p)
+estData :: (Traversable t, Monad m, Ord s, Num p, Fractional p) => EstimationStep s o p t m (TimeMap (EstimationData s o p))
+type MaximizationStep s o p t = ReaderT (TimeMap (EstimationData s o p), HMM s o p t)
+getGamma :: (Monad m) => Int -> MaximizationStep s o p t m (Map s p)
+getXi :: (Monad m) => Int -> MaximizationStep s o p t m (Map s (Map s p))
+getObsActualAt :: (Monad m) => Int -> MaximizationStep s o p t m (Int, o)
+getsHMM_M :: (Monad m) => (HMM s o p t -> a) -> MaximizationStep s o p t m a
+pi' :: (Monad m, Traversable t, Fractional p, Ord s) => MaximizationStep s o p t m (s -> p)
+
+-- | complete some monadic action for each state transition
+foreachStateTransition :: (Monad m, Traversable t, Ord s) => (s -> s -> MaximizationStep s o p t m a) -> MaximizationStep s o p t m (Map s (Map s a))
+foreachStateAndObs :: (Monad m, Traversable t, Ord s, Ord o) => (s -> o -> MaximizationStep s o p t m a) -> MaximizationStep s o p t m (Map s (Map o a))
+mapToTwoArgFunc :: (Ord k1, Ord k2) => Map k1 (Map k2 v) -> (k1 -> k2 -> v)
+alpha' :: (Monad m, Traversable t, Fractional p, Ord s) => MaximizationStep s o p t m (s -> s -> p)
+beta' :: (Monad m, Traversable t, Fractional p, Ord s, Ord o, Eq o) => MaximizationStep s o p t m (s -> o -> p)
+normalizeDist :: (Fractional p, Ord k) => Map k p -> Map k p
+maximization :: (Monad m, Traversable t, Fractional p, Ord s, Ord o, Eq o) => MaximizationStep s o p t m (HMM s o p t)
+mapToFunc :: (Ord k) => Map k a -> (k -> a)
+reestimate :: (Traversable t, Ord s, Num p, Fractional p, Ord o, Eq o) => ObservationSeq o -> HMM s o p t -> HMM s o p t
+initData :: (Traversable t, Num p, Ord s) => HMM s o p t -> ObservationSeq o -> (TimeMap (TimeData s o p), HMM s o p t, p)
+initialTimeData :: (Traversable t, Num p, Ord s) => HMM s o p t -> ObservationSeq o -> TimeMap (TimeData s o p)
+computeAlphas :: (Traversable t, Num p, Ord s) => HMM s o p t -> ObservationSeq o -> TimeMap (AlphaMap s p)
+computeBetas :: (Traversable t, Num p, Ord s) => HMM s o p t -> ObservationSeq o -> TimeMap (BetaMap s p)
+computeLikelihood :: (Num p) => TimeMap (TimeData s o p) -> p
+type Time = Int
+type TimeMap a = IntMap a
+
+-- | Time ordered forward/backward variables with their respective
+--   observations
+data TimeData s o p
+TimeData :: AlphaMap s p -> BetaMap s p -> o -> TimeData s o p
+[alpha] :: TimeData s o p -> AlphaMap s p
+[beta] :: TimeData s o p -> BetaMap s p
+[t_obs] :: TimeData s o p -> o
+
+-- | Time ordered estimation-step data
+data EstimationData s o p
+EstData :: Map s p -> Map s (Map s p) -> o -> EstimationData s o p
+[gamma] :: EstimationData s o p -> Map s p
+[xi] :: EstimationData s o p -> Map s (Map s p)
+[e_obs] :: EstimationData s o p -> o
+
+-- | aggregation of TimeMaps AlphaMap and BetaMap with their observation
+--   sequence
+mkTimeData :: TimeMap (AlphaMap s p) -> TimeMap (BetaMap s p) -> ObservationSeq o -> TimeMap (TimeData s o p)
+instance (GHC.Show.Show s, GHC.Show.Show p, GHC.Show.Show o) => GHC.Show.Show (BaumWelch.TimeData s o p)
+
 module Viterbi
-decode :: (Traversable t, Functor t, Num p, Ord p, Foldable seq, Ord s) => HMM s o p t -> ObservationSeq o seq -> V s p
+decode :: (Traversable t, Functor t, Num p, Ord p, Ord s) => HMM s o p t -> ObservationSeq o -> V s p
 
 -- | The viterbi variable aggregate which includes the probability and
 --   (most likely) previous state for backtracing
 data V s p
 V :: (Seq s) -> p -> V s p
 Vi :: p -> V s p
+
+-- | an empty viterbi variable for use in the v_1 step
 vNil :: (Num p) => V s p
+
+-- | The probability of a Viterbi Variable
 probv :: V s p -> p
+
+-- | The backtrace of a Viterbi Variable(for V_i it is an empty sequence)
 seqV :: V s p -> Seq s
+
+-- | the chaining of viterbi variables, maintains the backtrace while
+--   adding a new state and corresponding probability
 chain :: s -> p -> V s p -> V s p
+
+-- | Type Synonym for Maps of viterbi variables corresponding to state over
+--   the observation domain
 type ViterbiMap s p = Map s (V s p)
-viterbis_T :: (Foldable seq, Num p, Ord p, Foldable t, Ord s) => HMM s o p t -> ObservationSeq o seq -> ViterbiMap s p
+viterbis_T :: (Num p, Ord p, Foldable t, Ord s) => HMM s o p t -> ObservationSeq o -> ViterbiMap s p
 
 -- | viterbi variable for the first observation(O_1) in a sequence
 viterbis_1 :: (Num p, Ord s, Foldable t) => HMM s o p t -> o -> ViterbiMap s p
@@ -117,6 +234,7 @@ instance (GHC.Classes.Eq s, GHC.Classes.Eq p, GHC.Classes.Ord p) => GHC.Classes.
 instance GHC.Base.Functor (Viterbi.V s)
 
 module Example
+type Probability = Double
 data Weather
 Start :: Weather
 Hot :: Weather
@@ -128,10 +246,9 @@ Three :: IceCreams
 obs_prob :: Weather -> IceCreams -> Probability
 trans_prob :: Weather -> Weather -> Probability
 exampleHMM :: HMM Weather IceCreams Probability []
-trial2 :: [IceCreams]
-trial1 :: [IceCreams]
-t_1 :: ObservationSeq IceCreams []
-t_2 :: ObservationSeq IceCreams []
+trial2 :: ObservationSeq IceCreams
+trial1 :: ObservationSeq IceCreams
+triald :: ObservationSeq IceCreams
 instance GHC.Classes.Ord Example.IceCreams
 instance GHC.Show.Show Example.IceCreams
 instance GHC.Classes.Eq Example.IceCreams

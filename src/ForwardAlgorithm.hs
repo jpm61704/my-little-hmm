@@ -14,9 +14,9 @@ the probability of an observation sequence occurring given a model
 
 this is problem 1, or the likelihood problem, in most HMM texts
 -}
-likelihood :: (Traversable t, Functor t, Num p, Foldable seq, Ord s)
+likelihood :: (Traversable t, Functor t, Num p, Ord s)
        => HMM s o p t
-       -> ObservationSeq o seq
+       -> ObservationSeq o
        -> p
 likelihood hmm = (sum . alphas_T hmm)
 
@@ -30,13 +30,13 @@ type AlphaMap s p = M.Map s p
 
 -- | The alpha calculation made for an entire observation sequence
 -- This is summed over to achieve the probability of a sequence occurring
-alphas_T :: (Traversable t, Functor t, Num p, Foldable seq, Ord s)
+alphas_T :: (Traversable t, Functor t, Num p, Ord s)
        => HMM s o p t
-       -> ObservationSeq o seq
+       -> ObservationSeq o
        -> AlphaMap s p
-alphas_T hmm (ObsSeq frst rst) = foldl al_t al_1 rst
+alphas_T hmm obsSeq = foldl al_t al_1 (rest obsSeq)
   where al_t am o = alphas_t am hmm o
-        al_1 = alphas_1 hmm frst
+        al_1 = alphas_1 hmm (first obsSeq)
 
 -- | the alphas for observation o_t with respect to the alphas from the
 -- previous observation.
